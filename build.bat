@@ -1,0 +1,1 @@
+odin build win32_handmade.odin -file -out:build/app.exe -o:speed -strict-style -vet
