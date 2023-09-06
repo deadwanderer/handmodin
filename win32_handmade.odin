@@ -1,11 +1,14 @@
 package main
 
 import "core:fmt"
-// import "core:mem"
+import "core:math"
+// import "core:os"
 import "core:runtime"
 import win32 "core:sys/windows"
+import "core:time"
 // _ :: win32
 // import "vendor:sdl2"
+
 
 GlobalRunning: bool
 BitmapInfo: win32.BITMAPINFO
@@ -16,6 +19,11 @@ BytesPerPixel: i32 : 4
 
 InitialWindowWidth :: 1280
 InitialWindowHeight :: 720
+
+TargetFPS: f64 : 60.0
+TargetFrameSeconds: f64 : 1.0 / TargetFPS
+TargetFrameMSf: f64 : TargetFrameSeconds * 1000.0
+TargetFrameNSf: f64 : TargetFrameMSf * 1000.0 * 1000.0
 
 render_weird_gradient :: proc(Bitmap: []u32, BlueOffset: i32, GreenOffset: i32) {
 	for Y: i32 = 0; Y < BitmapHeight; Y += 1 {
@@ -126,6 +134,11 @@ win32_main_window_callback :: proc "stdcall" (
 main :: proc() {
 	GlobalRunning = false
 
+
+	TargetFrameNS: i64 = cast(i64)math.trunc(TargetFrameNSf)
+
+	StartTime := time.now()
+
 	Instance := win32.HANDLE(win32.GetModuleHandleA(nil))
 	WindowClass := win32.WNDCLASSW {
 		style         = 0,
@@ -158,7 +171,12 @@ main :: proc() {
 			BitmapMemorySize := (InitialWindowWidth * InitialWindowHeight)
 			BitmapMemory = make([dynamic]u32, BitmapMemorySize)
 			GlobalRunning = true
+
+			InitTime := time.since(StartTime)
+			fmt.println("Startup time: ", time.duration_milliseconds(InitTime), "ms")
+			// fmt.println("Target Frame time:", time.duration_seconds(time.Duration(TargetFrameNS)))
 			for GlobalRunning {
+				LoopStart := time.now()
 				Message: win32.MSG
 				for win32.PeekMessageW(&Message, nil, 0, 0, win32.PM_REMOVE) {
 					if Message.message == win32.WM_QUIT {
@@ -181,6 +199,14 @@ main :: proc() {
 
 				XOffset += 1
 				YOffset += 2
+				LoopEnd := time.since(LoopStart)
+
+				fmt.println("Loop time:", time.duration_milliseconds(LoopEnd), "ms")
+				time_to_sleep := cast(time.Duration)(cast(time.Duration)TargetFrameNS - LoopEnd)
+				if time_to_sleep > 0 {
+					time.sleep(time_to_sleep)
+					// fmt.println("Sleeping for", time_to_sleep)
+				}
 			}
 			win32.DestroyWindow(Window)
 		} else {}
