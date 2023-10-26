@@ -1,1 +1,1 @@
-odin build . -out:build/app.exe -o:speed -strict-style -vet -show-timings
+odin build . -out:bin/app.exe -debug -strict-style -vet -show-timings -define:HANDMADE_INTERNAL=true -define:HANDMADE_SLOW=true -define:HANDMADE_SDL=true
