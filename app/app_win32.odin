@@ -10,16 +10,20 @@ import win32 "core:sys/windows"
 
 
 when HANDMADE_WINDOWS {
-
 	GlobalRunning: bool
 	BitmapInfo: win32.BITMAPINFO
-	BitmapMemory: []u32
+	BitmapMemory: [dynamic]u32
 	BitmapWidth: i32
 	BitmapHeight: i32
 	BytesPerPixel: i32 : 4
 
 	InitialWindowWidth :: 1280
 	InitialWindowHeight :: 720
+
+	TargetFPS: f64 : 60.0
+	TargetFrameSeconds: f64 : 1.0 / TargetFPS
+	TargetFrameMSf: f64 : TargetFrameSeconds * 1000.0
+	TargetFrameNSf: f64 : TargetFrameMSf * 1000.0 * 1000.0
 
 	render_weird_gradient :: proc(Bitmap: []u32, BlueOffset: i32, GreenOffset: i32) {
 		for Y: i32 = 0; Y < BitmapHeight; Y += 1 {
@@ -46,7 +50,7 @@ when HANDMADE_WINDOWS {
 		BitmapInfo.bmiHeader.biCompression = win32.BI_RGB
 
 		BitmapMemorySize := (BitmapWidth * BitmapHeight)
-		BitmapMemory = make([]u32, BitmapMemorySize)
+		BitmapMemory = make([dynamic]u32, BitmapMemorySize)
 	}
 
 	win32_update_window :: proc(
@@ -130,6 +134,11 @@ when HANDMADE_WINDOWS {
 	main :: proc() {
 		GlobalRunning = false
 
+
+		TargetFrameNS: i64 = cast(i64)math.trunc(TargetFrameNSf)
+
+		StartTime := time.now()
+
 		Instance := win32.HANDLE(win32.GetModuleHandleA(nil))
 		WindowClass := win32.WNDCLASSW {
 			style         = 0,
@@ -160,9 +169,14 @@ when HANDMADE_WINDOWS {
 				YOffset: i32 = 0
 
 				BitmapMemorySize := (InitialWindowWidth * InitialWindowHeight)
-				BitmapMemory = make([]u32, BitmapMemorySize)
+				BitmapMemory = make([dynamic]u32, BitmapMemorySize)
 				GlobalRunning = true
+
+				InitTime := time.since(StartTime)
+				fmt.println("Startup time: ", time.duration_milliseconds(InitTime), "ms")
+				// fmt.println("Target Frame time:", time.duration_seconds(time.Duration(TargetFrameNS)))
 				for GlobalRunning {
+					LoopStart := time.now()
 					Message: win32.MSG
 					for win32.PeekMessageW(&Message, nil, 0, 0, win32.PM_REMOVE) {
 						if Message.message == win32.WM_QUIT {
@@ -172,7 +186,7 @@ when HANDMADE_WINDOWS {
 						win32.DispatchMessageW(&Message)
 					}
 
-					render_weird_gradient(BitmapMemory, XOffset, YOffset)
+					render_weird_gradient(BitmapMemory[:], XOffset, YOffset)
 
 					DeviceContext := win32.GetDC(Window)
 
@@ -185,9 +199,19 @@ when HANDMADE_WINDOWS {
 
 					XOffset += 1
 					YOffset += 2
+					LoopEnd := time.since(LoopStart)
+
+					fmt.println("Loop time:", time.duration_milliseconds(LoopEnd), "ms")
+					time_to_sleep := cast(time.Duration)(cast(time.Duration)TargetFrameNS -
+						LoopEnd)
+					if time_to_sleep > 0 {
+						time.sleep(time_to_sleep)
+						// fmt.println("Sleeping for", time_to_sleep)
+					}
 				}
 				win32.DestroyWindow(Window)
 			} else {}
 		} else {}
 	}
+
 }
