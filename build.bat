@@ -1,1 +1,2 @@
-odin build . -out:bin/app.exe -debug -strict-style -vet -show-timings -define:HANDMADE_INTERNAL=true -define:HANDMADE_SLOW=true -define:HANDMADE_SDL=true
+odin build game -build-mode:dll -out:bin/handmade.dll -debug -strict-style -vet -show-timings -define:HANDMADE_INTERNAL=true -define:HANDMADE_SLOW=true -define:HANDMADE_SDL=true
+odin build app -out:bin/app.exe -debug -strict-style -vet -show-timings -define:HANDMADE_INTERNAL=true -define:HANDMADE_SLOW=true -define:HANDMADE_SDL=true

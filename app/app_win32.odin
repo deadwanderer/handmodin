@@ -1,12 +1,12 @@
 package app
 
 import "core:fmt"
-// import "core:mem"
 import "core:runtime"
 import win32 "core:sys/windows"
-// import "vendor:vulkan"
-// _ :: win32
-// import "vendor:sdl2"
+
+_ :: fmt
+_ :: runtime
+_ :: win32
 
 
 when HANDMADE_WINDOWS {
@@ -132,6 +132,7 @@ when HANDMADE_WINDOWS {
 	}
 
 	main :: proc() {
+		fmt.println("Hello, Windows Handmade")
 		GlobalRunning = false
 
 
