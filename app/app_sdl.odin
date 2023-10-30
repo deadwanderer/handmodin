@@ -1,6 +1,6 @@
 package app
 
-import game "../game"
+import s "../shared"
 import "core:fmt"
 import "core:os"
 import "core:strings"
@@ -29,45 +29,45 @@ when HANDMADE_SDL {
 		Height: i32,
 	}
 
-	SoundOutput :: struct {
-		SamplesPerSecond:    i32,
-		RunningSampleIndex:  u32,
-		BytesPerSample:      i32,
-		SecondaryBufferSize: u32,
-		SafetyBytes:         u32,
-	}
+	// SoundOutput :: struct {
+	// 	SamplesPerSecond:    i32,
+	// 	RunningSampleIndex:  u32,
+	// 	BytesPerSample:      i32,
+	// 	SecondaryBufferSize: u32,
+	// 	SafetyBytes:         u32,
+	// }
 
-	DebugTimeMarker :: struct {
-		QueuedAudioBytes:       u32,
-		OutputByteCount:        u32,
-		ExpectedBytesUntilFlip: u32,
-	}
+	// DebugTimeMarker :: struct {
+	// 	QueuedAudioBytes:       u32,
+	// 	OutputByteCount:        u32,
+	// 	ExpectedBytesUntilFlip: u32,
+	// }
 
 	GameCode :: struct {
 		GameCodeDLL:      rawptr,
 		DLLLastWriteTime: os.File_Time,
-		UpdateAndRender:  game.update_and_render_proc,
-		GetSoundSamples:  game.get_sound_samples_proc,
+		UpdateAndRender:  s.update_and_render_proc,
+		GetSoundSamples:  s.get_sound_samples_proc,
 		IsValid:          b8,
 	}
 
 	STATE_FILE_NAME_COUNT :: 4096
-	ReplayBuffer :: struct {
-		FileHandle:  os.Handle,
-		MemoryMap:   rawptr,
-		FileName:    string,
-		MemoryBlock: rawptr,
-	}
+	// ReplayBuffer :: struct {
+	// 	FileHandle:  os.Handle,
+	// 	MemoryMap:   rawptr,
+	// 	FileName:    string,
+	// 	MemoryBlock: rawptr,
+	// }
 
 	AppState :: struct {
-		TotalSize:           u64,
-		GameMemoryBlock:     rawptr,
-		ReplayBuffers:       [4]ReplayBuffer,
-		RecordingHandle:     i32,
-		InputRecordingIndex: i32,
-		PlaybackHandle:      i32,
-		InputPlayingIndex:   i32,
-		BasePath:            string,
+		TotalSize:       u64,
+		GameMemoryBlock: rawptr,
+		// ReplayBuffers:       [4]ReplayBuffer,
+		// RecordingHandle:     i32,
+		// InputRecordingIndex: i32,
+		// PlaybackHandle:      i32,
+		// InputPlayingIndex:   i32,
+		BasePath:        string,
 	}
 
 	GlobalRunning: b8 = false
@@ -154,7 +154,7 @@ when HANDMADE_SDL {
 			Buffer.Width,
 			Buffer.Height,
 		)
-		Buffer.Pitch = i32(game.Align16(u32(Width * BytesPerPixel)))
+		Buffer.Pitch = i32(s.Align16(u32(Width * BytesPerPixel)))
 		BitmapMemorySize := uint(Buffer.Pitch * Buffer.Height)
 		Buffer.Memory = win32.VirtualAlloc(
 			nil,
@@ -162,6 +162,79 @@ when HANDMADE_SDL {
 			win32.MEM_RESERVE | win32.MEM_COMMIT,
 			win32.PAGE_READWRITE,
 		)
+	}
+
+	DEBUGPlatformFreeFileMemory :: proc(Memory: rawptr) {
+		if Memory != nil {
+			win32.VirtualFree(Memory, 0, win32.MEM_RELEASE)
+		}
+	}
+
+	DEBUGPlatformReadEntireFile :: proc(Filename: string) -> s.DEBUGReadFileResult {
+		Result: s.DEBUGReadFileResult = {}
+
+		FileHandle: win32.HANDLE = win32.CreateFileA(
+			strings.clone_to_cstring(Filename, context.temp_allocator),
+			win32.GENERIC_READ,
+			win32.FILE_SHARE_READ,
+			nil,
+			win32.OPEN_EXISTING,
+			0,
+			nil,
+		)
+		if FileHandle != win32.INVALID_HANDLE_VALUE {
+			FileSize: win32.LARGE_INTEGER
+			if win32.GetFileSizeEx(FileHandle, &FileSize) == true {
+				FileSize32 := u32(FileSize)
+				Result.Contents = win32.VirtualAlloc(
+					nil,
+					uint(FileSize32),
+					win32.MEM_RESERVE | win32.MEM_COMMIT,
+					win32.PAGE_READWRITE,
+				)
+				if Result.Contents != nil {
+					BytesRead: win32.DWORD
+					if win32.ReadFile(FileHandle, Result.Contents, FileSize32, &BytesRead, nil) &&
+					   FileSize32 == BytesRead {
+						Result.ContentsSize = FileSize32
+					} else {
+						DEBUGPlatformFreeFileMemory(Result.Contents)
+						Result.Contents = nil
+					}
+				} else {}
+			} else {}
+
+			win32.CloseHandle(FileHandle)
+		} else {}
+
+		return Result
+	}
+
+	DEBUGPlatformWriteEntireFile :: proc(Filename: string, MemorySize: u32, Memory: rawptr) -> b8 {
+		Result: b8 = false
+		FileHandle: win32.HANDLE = win32.CreateFileA(
+			strings.clone_to_cstring(Filename, context.temp_allocator),
+			win32.GENERIC_WRITE,
+			0,
+			nil,
+			win32.CREATE_ALWAYS,
+			0,
+			nil,
+		)
+		if FileHandle != win32.INVALID_HANDLE_VALUE {
+			BytesWritten: win32.DWORD
+			if win32.WriteFile(FileHandle, Memory, MemorySize, &BytesWritten, nil) == true {
+				Result = BytesWritten == MemorySize
+			} else {
+
+			}
+
+			win32.CloseHandle(FileHandle)
+		} else {
+
+		}
+
+		return Result
 	}
 
 	main :: proc() {
@@ -199,6 +272,38 @@ when HANDMADE_SDL {
 			Renderer: ^sdl.Renderer = sdl.CreateRenderer(Window, -1, {.PRESENTVSYNC})
 			if Renderer != nil {
 				ResizeTexture(&GlobalBackbuffer, Renderer, 1280, 720)
+
+				GlobalRunning = true
+
+				for GlobalRunning {
+					BaseAddress: rawptr =
+						rawptr(uintptr(s.Terabytes(2))) when HANDMADE_INTERNAL else 0
+
+					GameMem: s.GameMemory = {}
+					GameMem.PermanentStorageSize = s.Megabytes(256)
+					GameMem.TransientStorageSize = s.Gigabytes(1)
+					GameMem.DEBUGPlatformFreeFileMemory = DEBUGPlatformFreeFileMemory
+					GameMem.DEBUGPlatformReadEntireFile = DEBUGPlatformReadEntireFile
+					GameMem.DEBUGPlatformWriteEntireFile = DEBUGPlatformWriteEntireFile
+
+					State.TotalSize = u64(
+						GameMem.PermanentStorageSize + GameMem.TransientStorageSize,
+					)
+					State.GameMemoryBlock = win32.VirtualAlloc(
+						BaseAddress,
+						uint(State.TotalSize),
+						win32.MEM_RESERVE | win32.MEM_COMMIT,
+						win32.PAGE_READWRITE,
+					)
+					GameMem.PermanentStorage = State.GameMemoryBlock
+					GameMem.TransientStorage = rawptr(
+						uintptr(GameMem.PermanentStorage) + uintptr(GameMem.PermanentStorageSize),
+					)
+
+					if GameMem.PermanentStorage != nil && GameMem.TransientStorage != nil {
+
+					}
+				}
 			}
 		}
 	}
